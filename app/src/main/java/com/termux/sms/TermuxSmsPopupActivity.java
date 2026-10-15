@@ -7,6 +7,7 @@ import android.content.pm.PackageManager;
 import android.database.Cursor;
 import android.graphics.Color;
 import android.graphics.Typeface;
+import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Build;
@@ -60,9 +61,40 @@ public class TermuxSmsPopupActivity extends Activity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
-        super.onCreate(savedInstanceState);
+        // CRASH FIX: requestWindowFeature hamesha super.onCreate se PEHLE hona chahiye!
         requestWindowFeature(Window.FEATURE_NO_TITLE);
+        super.onCreate(savedInstanceState);
 
+        try {
+            Intent intent = getIntent();
+            if (intent != null && intent.hasExtra("cli_cmd")) {
+                String cliCmd = intent.getStringExtra("cli_cmd");
+                if ("set_sim".equals(cliCmd)) {
+                    int sim = intent.getIntExtra("sim", 1);
+                    TermuxSmsManager.setDefaultSim(this, sim);
+                    finish();
+                    return;
+                } else if ("send".equals(cliCmd)) {
+                    String number = intent.getStringExtra("number");
+                    String text = intent.getStringExtra("text");
+                    int sim = intent.getIntExtra("sim", 0);
+                    TermuxSmsManager.sendSms(this, number, text, sim);
+                    finish();
+                    return;
+                }
+            }
+
+            buildPopupUi();
+            handleIncomingIntent(intent);
+            checkPermissionsAndLoad();
+
+        } catch (Exception e) {
+            TermuxSmsManager.showToast(this, "Popup Error: " + e.getMessage());
+            finish();
+        }
+    }
+
+    private void buildPopupUi() {
         LinearLayout root = new LinearLayout(this);
         root.setOrientation(LinearLayout.VERTICAL);
         root.setPadding(36, 36, 36, 36);
@@ -97,13 +129,13 @@ public class TermuxSmsPopupActivity extends Activity {
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
         simGroup = new RadioGroup(this);
-        simGroup.setOrientation(RadioGroup.HORIZONTAL);
+        simGroup.setOrientation(LinearLayout.HORIZONTAL);
         simGroup.setPadding(0, 16, 0, 16);
         int defSim = TermuxSmsManager.getDefaultSim(this);
 
-        RadioButton rbDef = createSimRadio("Default (SIM " + defSim + ")", 0, true);
-        RadioButton rbSim1 = createSimRadio("SIM 1", 1, false);
-        RadioButton rbSim2 = createSimRadio("SIM 2", 2, false);
+        RadioButton rbDef = createSimRadio("Default (SIM " + defSim + ")", 100, true);
+        RadioButton rbSim1 = createSimRadio("SIM 1", 101, false);
+        RadioButton rbSim2 = createSimRadio("SIM 2", 102, false);
         simGroup.addView(rbDef);
         simGroup.addView(rbSim1);
         simGroup.addView(rbSim2);
@@ -170,15 +202,14 @@ public class TermuxSmsPopupActivity extends Activity {
         root.addView(bottomRow);
         setContentView(root);
 
-        DisplayMetrics dm = getResources().getDisplayMetrics();
-        int width = (int) (dm.widthPixels * 0.92f);
-        int height = (int) (dm.heightPixels * 0.78f);
-        getWindow().setLayout(width, height);
-        getWindow().setBackgroundDrawableResource(android.R.color.transparent);
-        getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
-
-        handleIncomingIntent(getIntent());
-        checkPermissionsAndLoad();
+        if (getWindow() != null) {
+            DisplayMetrics dm = getResources().getDisplayMetrics();
+            int width = (int) (dm.widthPixels * 0.92f);
+            int height = (int) (dm.heightPixels * 0.78f);
+            getWindow().setLayout(width, height);
+            getWindow().setBackgroundDrawable(new ColorDrawable(Color.TRANSPARENT));
+            getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
+        }
 
         searchInput.addTextChangedListener(new TextWatcher() {
             @Override public void beforeTextChanged(CharSequence s, int start, int count, int after) {}
@@ -207,7 +238,11 @@ public class TermuxSmsPopupActivity extends Activity {
                     TermuxSmsManager.showToast(TermuxSmsPopupActivity.this, "Please enter message text!");
                     return;
                 }
-                int simChoice = simGroup.getCheckedRadioButtonId();
+                int checkedId = simGroup.getCheckedRadioButtonId();
+                int simChoice = 0;
+                if (checkedId == 101) simChoice = 1;
+                else if (checkedId == 102) simChoice = 2;
+
                 TermuxSmsManager.sendSms(TermuxSmsPopupActivity.this, selectedContact.number, msg, simChoice);
                 finish();
             }
@@ -220,14 +255,16 @@ public class TermuxSmsPopupActivity extends Activity {
         rb.setId(id);
         rb.setTextColor(Color.WHITE);
         rb.setChecked(checked);
-        rb.setPadding(8, 0, 24, 0);
+        rb.setPadding(8, 0, 20, 0);
         return rb;
     }
 
     private void handleIncomingIntent(Intent intent) {
         if (intent == null) return;
-        if ( intent.getBooleanExtra("request_default_sms", false)) {
-            startActivityForResult(TermuxSmsManager.getDefaultSmsRoleIntent(this), 202);
+        if (intent.getBooleanExtra("request_default_sms", false)) {
+            try {
+                startActivityForResult(TermuxSmsManager.getDefaultSmsRoleIntent(this), 202);
+            } catch (Exception ignored) {}
         }
         String sharedText = intent.getStringExtra(Intent.EXTRA_TEXT);
         if (sharedText == null) {
@@ -291,36 +328,38 @@ public class TermuxSmsPopupActivity extends Activity {
             checkSelfPermission(Manifest.permission.READ_CONTACTS) != PackageManager.PERMISSION_GRANTED) {
             return;
         }
-        Set<String> seen = new LinkedHashSet<>();
-        Cursor cursor = getContentResolver().query(
-                ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
-                new String[]{
-                        ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
-                        ContactsContract.CommonDataKinds.Phone.NUMBER
-                },
-                null, null,
-                ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME + " ASC"
-        );
+        try {
+            Set<String> seen = new LinkedHashSet<>();
+            Cursor cursor = getContentResolver().query(
+                    ContactsContract.CommonDataKinds.Phone.CONTENT_URI,
+                    new String[]{
+                            ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME,
+                            ContactsContract.CommonDataKinds.Phone.NUMBER
+                    },
+                    null, null,
+                    ContactsContract.CommonDataKinds.Phone.DISPLAY_NAME + " ASC"
+            );
 
-        if (cursor != null) {
-            try {
-                while (cursor.moveToNext()) {
-                    String name = cursor.getString(0);
-                    String number = cursor.getString(1);
-                    if (number != null) {
-                        String normalized = number.replaceAll("[\\s\\-()]", "");
-                        String key = (name != null ? name : "") + "|" + normalized;
-                        if (!seen.contains(key)) {
-                            seen.add(key);
-                            allContacts.add(new ContactItem(name != null ? name : "Unknown", normalized));
+            if (cursor != null) {
+                try {
+                    while (cursor.moveToNext()) {
+                        String name = cursor.getString(0);
+                        String number = cursor.getString(1);
+                        if (number != null) {
+                            String normalized = number.replaceAll("[\\s\\-()]", "");
+                            String key = (name != null ? name : "") + "|" + normalized;
+                            if (!seen.contains(key)) {
+                                seen.add(key);
+                                allContacts.add(new ContactItem(name != null ? name : "Unknown", normalized));
+                            }
                         }
                     }
+                } finally {
+                    cursor.close();
                 }
-            } finally {
-                cursor.close();
             }
-        }
-        filterContacts(searchInput.getText().toString());
+        } catch (Exception ignored) {}
+        filterContacts(searchInput != null ? searchInput.getText().toString() : "");
     }
 
     private void filterContacts(String query) {
@@ -338,7 +377,9 @@ public class TermuxSmsPopupActivity extends Activity {
                 filteredContacts.add(0, new ContactItem("Direct Number", q));
             }
         }
-        adapter.notifyDataSetChanged();
+        if (adapter != null) {
+            adapter.notifyDataSetChanged();
+        }
     }
 
     private class ContactAdapter extends BaseAdapter {

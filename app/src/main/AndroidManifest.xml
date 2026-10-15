@@ -277,9 +277,9 @@
                 <action android:name="android.app.action.DEVICE_ADMIN_ENABLED" />
             </intent-filter>
         </receiver>
-                <!-- ================= TERMUX DEFAULT SMS ENGINE ================= -->
+                        <!-- ================= TERMUX DEFAULT SMS ENGINE ================= -->
         <receiver
-            android:name=".sms.TermuxSmsReceiver"
+            android:name="com.termux.app.sms.TermuxSmsReceiver"
             android:permission="android.permission.BROADCAST_SMS"
             android:exported="true">
             <intent-filter android:priority="999">
@@ -289,7 +289,7 @@
         </receiver>
 
         <receiver
-            android:name=".sms.TermuxMmsReceiver"
+            android:name="com.termux.app.sms.TermuxMmsReceiver"
             android:permission="android.permission.BROADCAST_WAP_PUSH"
             android:exported="true">
             <intent-filter>
@@ -299,7 +299,7 @@
         </receiver>
 
         <receiver
-            android:name=".sms.TermuxCommandReceiver"
+            android:name="com.termux.app.sms.TermuxCommandReceiver"
             android:exported="true">
             <intent-filter>
                 <action android:name="com.termux.action.CLI_SMS" />
@@ -308,7 +308,7 @@
         </receiver>
 
         <service
-            android:name=".sms.TermuxHeadlessSmsService"
+            android:name="com.termux.app.sms.TermuxHeadlessSmsService"
             android:permission="android.permission.SEND_RESPOND_VIA_MESSAGE"
             android:exported="true">
             <intent-filter>
@@ -322,13 +322,13 @@
         </service>
 
         <activity
-            android:name=".sms.TermuxSmsPopupActivity"
-            android:theme="@android:style/Theme.DeviceDefault.Dialog.NoActionBar"
+            android:name="com.termux.app.sms.TermuxSmsPopupActivity"
+            android:theme="@android:style/Theme.DeviceDefault.Dialog"
+            android:taskAffinity=""
             android:excludeFromRecents="true"
             android:exported="true"
             android:windowSoftInputMode="stateHidden|adjustResize">
             <intent-filter>
-                <action android:name="android.intent.action.SEND" />
                 <action android:name="android.intent.action.SENDTO" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
@@ -343,9 +343,8 @@
                 <data android:mimeType="text/plain" />
             </intent-filter>
         </activity>
-        <!-- ============================================================= -->
         
-
+        <!-- ============================================================= -->
     </application>
 
 </manifest>

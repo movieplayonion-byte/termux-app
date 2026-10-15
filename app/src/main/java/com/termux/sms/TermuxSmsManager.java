@@ -35,14 +35,20 @@ public class TermuxSmsManager {
     private static final String CHANNEL_ID = "termux_sms_channel";
 
     public static void setDefaultSim(Context context, int simSlot) {
-        SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
-        prefs.edit().putInt(KEY_DEFAULT_SIM, simSlot).apply();
-        showToast(context, "Default SIM set to SIM " + simSlot);
+        try {
+            SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+            prefs.edit().putInt(KEY_DEFAULT_SIM, simSlot).apply();
+            showToast(context, "Default SIM set to SIM " + simSlot);
+        } catch (Throwable ignored) {}
     }
 
     public static int getDefaultSim(Context context) {
-        SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
-        return prefs.getInt(KEY_DEFAULT_SIM, 1);
+        try {
+            SharedPreferences prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+            return prefs.getInt(KEY_DEFAULT_SIM, 1);
+        } catch (Throwable e) {
+            return 1;
+        }
     }
 
     public static void sendSms(Context context, String number, String text, int simChoice) {
@@ -62,7 +68,7 @@ public class TermuxSmsManager {
                 smsManager.sendTextMessage(cleanNumber, null, text, null, null);
             }
             showToast(context, "SMS Sent via SIM " + targetSim + " to " + cleanNumber);
-        } catch (Exception e) {
+        } catch (Throwable e) {
             showToast(context, "SMS Failed: " + e.getMessage());
         }
     }
@@ -86,21 +92,22 @@ public class TermuxSmsManager {
                         }
                     }
                 }
-            } catch (Exception ignored) {
-            }
+            } catch (Throwable ignored) {}
         }
         return SmsManager.getDefault();
     }
 
     public static void handleIncomingSms(Context context, String sender, String body) {
-        String otp = extractOtp(body);
-        if (otp != null) {
-            copyToClipboard(context, otp);
-            showToast(context, "OTP Copied: " + otp);
-        }
-        String senderName = getContactName(context, sender);
-        String displayTitle = senderName != null ? senderName + " (" + sender + ")" : sender;
-        showReplyNotification(context, sender, displayTitle, body, otp);
+        try {
+            String otp = extractOtp(body);
+            if (otp != null) {
+                copyToClipboard(context, otp);
+                showToast(context, "OTP Copied: " + otp);
+            }
+            String senderName = getContactName(context, sender);
+            String displayTitle = senderName != null ? senderName + " (" + sender + ")" : sender;
+            showReplyNotification(context, sender, displayTitle, body, otp);
+        } catch (Throwable ignored) {}
     }
 
     private static String extractOtp(String body) {
@@ -127,17 +134,17 @@ public class TermuxSmsManager {
                         ClipData clip = ClipData.newPlainText("OTP", text);
                         clipboard.setPrimaryClip(clip);
                     }
-                } catch (Exception ignored) {
-                }
+                } catch (Throwable ignored) {}
             }
         });
     }
 
     private static String getContactName(Context context, String phoneNumber) {
-        if (context.checkSelfPermission(Manifest.permission.READ_CONTACTS) != PackageManager.PERMISSION_GRANTED) {
-            return null;
-        }
         try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M &&
+                context.checkSelfPermission(Manifest.permission.READ_CONTACTS) != PackageManager.PERMISSION_GRANTED) {
+                return null;
+            }
             Uri uri = Uri.withAppendedPath(ContactsContract.PhoneLookup.CONTENT_FILTER_URI, Uri.encode(phoneNumber));
             Cursor cursor = context.getContentResolver().query(uri, new String[]{ContactsContract.PhoneLookup.DISPLAY_NAME}, null, null, null);
             if (cursor != null) {
@@ -149,69 +156,72 @@ public class TermuxSmsManager {
                     cursor.close();
                 }
             }
-        } catch (Exception ignored) {
-        }
+        } catch (Throwable ignored) {}
         return null;
     }
 
     @SuppressWarnings("deprecation")
     private static void showReplyNotification(Context context, String rawNumber, String title, String body, String otp) {
-        NotificationManager nm = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
-        if (nm == null) return;
+        try {
+            NotificationManager nm = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
+            if (nm == null) return;
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            NotificationChannel channel = new NotificationChannel(CHANNEL_ID, "Termux SMS", NotificationManager.IMPORTANCE_HIGH);
-            channel.enableVibration(true);
-            nm.createNotificationChannel(channel);
-        }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                NotificationChannel channel = new NotificationChannel(CHANNEL_ID, "Termux SMS", NotificationManager.IMPORTANCE_HIGH);
+                channel.enableVibration(true);
+                nm.createNotificationChannel(channel);
+            }
 
-        int notificationId = (rawNumber != null) ? rawNumber.hashCode() : (int) System.currentTimeMillis();
+            int notificationId = (rawNumber != null) ? rawNumber.hashCode() : (int) System.currentTimeMillis();
 
-        Intent replyIntent = new Intent(context, TermuxCommandReceiver.class);
-        replyIntent.setAction("com.termux.action.INLINE_REPLY");
-        replyIntent.putExtra("sender", rawNumber);
-        replyIntent.putExtra("notif_id", notificationId);
+            Intent replyIntent = new Intent(context, TermuxCommandReceiver.class);
+            replyIntent.setAction("com.termux.action.INLINE_REPLY");
+            replyIntent.putExtra("sender", rawNumber);
+            replyIntent.putExtra("notif_id", notificationId);
 
-        int flags = PendingIntent.FLAG_UPDATE_CURRENT;
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            flags |= PendingIntent.FLAG_MUTABLE;
-        }
-        PendingIntent replyPendingIntent = PendingIntent.getBroadcast(context, notificationId, replyIntent, flags);
+            int flags = PendingIntent.FLAG_UPDATE_CURRENT;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                flags |= PendingIntent.FLAG_MUTABLE;
+            }
+            PendingIntent replyPendingIntent = PendingIntent.getBroadcast(context, notificationId, replyIntent, flags);
 
-        RemoteInput remoteInput = new RemoteInput.Builder("key_text_reply")
-                .setLabel("Type reply...")
-                .build();
+            RemoteInput remoteInput = new RemoteInput.Builder("key_text_reply")
+                    .setLabel("Type reply...")
+                    .build();
 
-        android.app.Notification.Action replyAction = new android.app.Notification.Action.Builder(
-                android.R.drawable.ic_menu_send, "Reply", replyPendingIntent)
-                .addRemoteInput(remoteInput)
-                .build();
+            android.app.Notification.Action replyAction = new android.app.Notification.Action.Builder(
+                    android.R.drawable.ic_menu_send, "Reply", replyPendingIntent)
+                    .addRemoteInput(remoteInput)
+                    .build();
 
-        android.app.Notification.Builder builder;
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            builder = new android.app.Notification.Builder(context, CHANNEL_ID);
-        } else {
-            builder = new android.app.Notification.Builder(context);
-            builder.setPriority(android.app.Notification.PRIORITY_HIGH);
-        }
+            android.app.Notification.Builder builder;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                builder = new android.app.Notification.Builder(context, CHANNEL_ID);
+            } else {
+                builder = new android.app.Notification.Builder(context);
+                builder.setPriority(android.app.Notification.PRIORITY_HIGH);
+            }
 
-        String contentText = (otp != null) ? "[OTP: " + otp + " Copied] " + body : body;
+            String contentText = (otp != null) ? "[OTP: " + otp + " Copied] " + body : body;
 
-        builder.setSmallIcon(android.R.drawable.sym_action_email)
-                .setContentTitle(title)
-                .setContentText(contentText)
-                .setStyle(new android.app.Notification.BigTextStyle().bigText(contentText))
-                .setAutoCancel(true)
-                .addAction(replyAction);
+            builder.setSmallIcon(android.R.drawable.sym_action_email)
+                    .setContentTitle(title)
+                    .setContentText(contentText)
+                    .setStyle(new android.app.Notification.BigTextStyle().bigText(contentText))
+                    .setAutoCancel(true)
+                    .addAction(replyAction);
 
-        nm.notify(notificationId, builder.build());
+            nm.notify(notificationId, builder.build());
+        } catch (Throwable ignored) {}
     }
 
     public static void showToast(final Context context, final String msg) {
         new Handler(Looper.getMainLooper()).post(new Runnable() {
             @Override
             public void run() {
-                Toast.makeText(context.getApplicationContext(), msg, Toast.LENGTH_SHORT).show();
+                try {
+                    Toast.makeText(context.getApplicationContext(), msg, Toast.LENGTH_SHORT).show();
+                } catch (Throwable ignored) {}
             }
         });
     }

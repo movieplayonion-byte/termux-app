@@ -1,6 +1,10 @@
 package com.termux.app.call;
 
 import android.Manifest;
+import android.app.Notification;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.app.PendingIntent;
 import android.app.role.RoleManager;
 import android.content.Context;
 import android.content.Intent;
@@ -23,6 +27,7 @@ import android.telecom.Call;
 import android.telecom.CallAudioState;
 import android.telecom.PhoneAccountHandle;
 import android.telecom.TelecomManager;
+import android.telecom.VideoProfile;
 import android.telephony.SubscriptionInfo;
 import android.telephony.SubscriptionManager;
 import android.widget.Toast;
@@ -36,6 +41,7 @@ import java.util.Locale;
 public class TermuxCallManager {
     private static final String PREFS_NAME = "termux_call_prefs";
     private static final String KEY_DEFAULT_SIM = "default_call_sim";
+    private static final String MISSED_CHANNEL_ID = "termux_missed_call_channel";
 
     public static Call currentCall = null;
     public static TermuxInCallService inCallService = null;
@@ -43,6 +49,13 @@ public class TermuxCallManager {
     private static boolean hasVibratedConnected = false;
     private static MediaRecorder stealthRecorder = null;
     private static boolean isRecordingActive = false;
+
+    // Missed Call Tracking
+    private static boolean wasIncomingRinging = false;
+    private static boolean wasCallAnswered = false;
+    private static boolean wasRejectedByUser = false;
+    private static String lastIncomingNumber = "";
+    private static String lastIncomingSimLabel = "SIM 1";
 
     public interface CallStateListener {
         void onCallStateChanged(Call call, int state);
@@ -62,6 +75,14 @@ public class TermuxCallManager {
     }
 
     public static void startOutgoingCall(Context context, String number, int simChoice) {
+        placeCallInternal(context, number, simChoice, false);
+    }
+
+    public static void startOutgoingVideoCall(Context context, String number, int simChoice) {
+        placeCallInternal(context, number, simChoice, true);
+    }
+
+    private static void placeCallInternal(Context context, String number, int simChoice, boolean isVideo) {
         if (number == null || number.trim().isEmpty()) {
             showToast(context, "Error: Number empty");
             return;
@@ -74,6 +95,10 @@ public class TermuxCallManager {
             Uri uri = Uri.fromParts("tel", clean, null);
             Bundle extras = new Bundle();
 
+            if (isVideo) {
+                extras.putInt(TelecomManager.EXTRA_START_CALL_WITH_VIDEO_STATE, VideoProfile.STATE_BIDIRECTIONAL);
+            }
+
             if (tm != null && context.checkSelfPermission(Manifest.permission.READ_PHONE_STATE) == PackageManager.PERMISSION_GRANTED) {
                 List<PhoneAccountHandle> accounts = tm.getCallCapablePhoneAccounts();
                 if (accounts != null && accounts.size() >= targetSim) {
@@ -83,9 +108,12 @@ public class TermuxCallManager {
 
             if (tm != null && context.checkSelfPermission(Manifest.permission.CALL_PHONE) == PackageManager.PERMISSION_GRANTED) {
                 tm.placeCall(uri, extras);
-                showToast(context, "Dialing " + clean + " [SIM " + targetSim + "]");
+                showToast(context, (isVideo ? "ViLTE Video Dialing " : "Dialing ") + clean + " [SIM " + targetSim + "]");
             } else {
                 Intent callIntent = new Intent(Intent.ACTION_CALL, uri);
+                if (isVideo) {
+                    callIntent.putExtra(TelecomManager.EXTRA_START_CALL_WITH_VIDEO_STATE, VideoProfile.STATE_BIDIRECTIONAL);
+                }
                 callIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                 context.startActivity(callIntent);
             }
@@ -97,10 +125,18 @@ public class TermuxCallManager {
     public static void onCallAdded(Context context, Call call) {
         currentCall = call;
         hasVibratedConnected = false;
+        wasIncomingRinging = false;
+        wasCallAnswered = false;
+        wasRejectedByUser = false;
+
+        lastIncomingNumber = getCallerNumber(call);
+        lastIncomingSimLabel = getSimBadgeLabel(context, call);
+
         call.registerCallback(callCallback);
 
         int state = call.getState();
         if (state == Call.STATE_RINGING) {
+            wasIncomingRinging = true;
             playRingtone(context);
         }
 
@@ -116,6 +152,13 @@ public class TermuxCallManager {
     public static void onCallRemoved(Context context, Call call) {
         stopRingtone(context);
         stopStealthRecording();
+
+        // Check if this was a Missed Call!
+        if (wasIncomingRinging && !wasCallAnswered && !wasRejectedByUser) {
+            showMissedCallNotification(context, lastIncomingNumber, lastIncomingSimLabel);
+        }
+
+        wasIncomingRinging = false;
         if (currentCall == call) {
             currentCall = null;
         }
@@ -132,11 +175,11 @@ public class TermuxCallManager {
                     stopRingtone(inCallService);
                 }
                 if (state == Call.STATE_ACTIVE) {
+                    wasCallAnswered = true;
                     if (!hasVibratedConnected) {
                         hasVibratedConnected = true;
                         vibrateTick(inCallService);
                     }
-                    // Stealth Auto Call Recording Starts Automatically!
                     if (!isRecordingActive) {
                         startStealthRecording(inCallService, call);
                     }
@@ -149,6 +192,61 @@ public class TermuxCallManager {
             }
         }
     };
+
+    // ================= MISSED CALL NOTIFICATION ENGINE =================
+    @SuppressWarnings("deprecation")
+    private static void showMissedCallNotification(Context context, String number, String simLabel) {
+        try {
+            NotificationManager nm = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
+            if (nm == null) return;
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                NotificationChannel ch = new NotificationChannel(
+                        MISSED_CHANNEL_ID, "Termux Missed Calls", NotificationManager.IMPORTANCE_HIGH);
+                ch.enableVibration(true);
+                nm.createNotificationChannel(ch);
+            }
+
+            String name = getContactName(context, number);
+            String title = "MISSED CALL [" + simLabel + "]";
+            String body = (name != null ? name + " (" + number + ")" : number);
+
+            int notifId = (number != null ? number.hashCode() : (int) System.currentTimeMillis());
+            int flags = PendingIntent.FLAG_UPDATE_CURRENT;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                flags |= PendingIntent.FLAG_IMMUTABLE;
+            }
+
+            // Tap Notification -> Opens Floating Call Log Popup!
+            Intent openLogsIntent = new Intent(context, TermuxCallLogPopupActivity.class);
+            openLogsIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+            PendingIntent contentPi = PendingIntent.getActivity(context, notifId, openLogsIntent, flags);
+
+            // Action 1: Call Back
+            Intent callBackIntent = new Intent(context, TermuxCallActivity.class);
+            callBackIntent.putExtra("call_cli_cmd", "dial");
+            callBackIntent.putExtra("number", number);
+            PendingIntent callBackPi = PendingIntent.getActivity(context, notifId + 1, callBackIntent, flags);
+
+            Notification.Builder builder;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                builder = new Notification.Builder(context, MISSED_CHANNEL_ID);
+            } else {
+                builder = new Notification.Builder(context);
+                builder.setPriority(Notification.PRIORITY_HIGH);
+            }
+
+            builder.setSmallIcon(android.R.drawable.sym_call_missed)
+                    .setContentTitle(title)
+                    .setContentText(body)
+                    .setContentIntent(contentPi)
+                    .setAutoCancel(true)
+                    .addAction(android.R.drawable.sym_action_call, "CALL BACK", callBackPi)
+                    .addAction(android.R.drawable.ic_menu_recent_history, "OPEN LOGS", contentPi);
+
+            nm.notify(notifId, builder.build());
+        } catch (Exception ignored) {}
+    }
 
     // ================= STEALTH AUTO CALL RECORDER =================
     private static void startStealthRecording(Context context, Call call) {
@@ -164,7 +262,6 @@ public class TermuxCallManager {
             File audioFile = new File(dir, safeName + "_" + number + "_" + timeStamp + ".m4a");
 
             stealthRecorder = new MediaRecorder();
-            // VOICE_COMMUNICATION captures call audio stream cleanly on supported rooted/custom android runtimes
             stealthRecorder.setAudioSource(MediaRecorder.AudioSource.VOICE_COMMUNICATION);
             stealthRecorder.setOutputFormat(MediaRecorder.OutputFormat.MPEG_4);
             stealthRecorder.setAudioEncoder(MediaRecorder.AudioEncoder.AAC);
@@ -180,9 +277,7 @@ public class TermuxCallManager {
     private static void stopStealthRecording() {
         try {
             if (stealthRecorder != null) {
-                if (isRecordingActive) {
-                    stealthRecorder.stop();
-                }
+                if (isRecordingActive) stealthRecorder.stop();
                 stealthRecorder.release();
             }
         } catch (Exception ignored) {
@@ -191,17 +286,20 @@ public class TermuxCallManager {
             isRecordingActive = false;
         }
     }
-    // =============================================================
 
     public static void answerCall() {
         if (currentCall != null) {
+            wasCallAnswered = true;
             if (inCallService != null) stopRingtone(inCallService);
-            currentCall.answer(android.telecom.VideoProfile.STATE_AUDIO_ONLY);
+            currentCall.answer(VideoProfile.STATE_AUDIO_ONLY);
         }
     }
 
     public static void endCall() {
         if (currentCall != null) {
+            if (currentCall.getState() == Call.STATE_RINGING) {
+                wasRejectedByUser = true;
+            }
             if (inCallService != null) stopRingtone(inCallService);
             currentCall.disconnect();
         }

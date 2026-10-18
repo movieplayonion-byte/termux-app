@@ -25,6 +25,7 @@ import android.os.Vibrator;
 import android.provider.ContactsContract;
 import android.telecom.Call;
 import android.telecom.CallAudioState;
+import android.telecom.InCallService;
 import android.telecom.PhoneAccountHandle;
 import android.telecom.TelecomManager;
 import android.telecom.VideoProfile;
@@ -42,6 +43,8 @@ public class TermuxCallManager {
     private static final String PREFS_NAME = "termux_call_prefs";
     private static final String KEY_DEFAULT_SIM = "default_call_sim";
     private static final String MISSED_CHANNEL_ID = "termux_missed_call_channel";
+    private static final String ONGOING_CHANNEL_ID = "termux_ongoing_call_channel";
+    private static final int ONGOING_NOTIF_ID = 777;
 
     public static Call currentCall = null;
     public static TermuxInCallService inCallService = null;
@@ -50,7 +53,7 @@ public class TermuxCallManager {
     private static MediaRecorder stealthRecorder = null;
     private static boolean isRecordingActive = false;
 
-    // Missed Call Tracking
+    // Missed Call Tracking State
     private static boolean wasIncomingRinging = false;
     private static boolean wasCallAnswered = false;
     private static boolean wasRejectedByUser = false;
@@ -140,6 +143,9 @@ public class TermuxCallManager {
             playRingtone(context);
         }
 
+        // Show active persistent ongoing call notification
+        showOngoingCallNotification(context, call);
+
         Intent intent = new Intent(context, TermuxCallActivity.class);
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
         context.startActivity(intent);
@@ -152,8 +158,9 @@ public class TermuxCallManager {
     public static void onCallRemoved(Context context, Call call) {
         stopRingtone(context);
         stopStealthRecording();
+        cancelOngoingNotification(context);
 
-        // Check if this was a Missed Call!
+        // Check for Missed Call
         if (wasIncomingRinging && !wasCallAnswered && !wasRejectedByUser) {
             showMissedCallNotification(context, lastIncomingNumber, lastIncomingSimLabel);
         }
@@ -187,16 +194,77 @@ public class TermuxCallManager {
                     stopStealthRecording();
                 }
             }
+            showOngoingCallNotification(inCallService != null ? inCallService : inCallService, call);
             if (listener != null) {
                 listener.onCallStateChanged(call, state);
             }
         }
     };
 
+    // ================= ONGOING CALL FOREGROUND NOTIFICATION =================
+    public static void showOngoingCallNotification(Context context, Call call) {
+        try {
+            if (context == null || call == null) return;
+            NotificationManager nm = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
+            if (nm == null) return;
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                NotificationChannel ch = new NotificationChannel(
+                        ONGOING_CHANNEL_ID, "Active Call", NotificationManager.IMPORTANCE_LOW);
+                nm.createNotificationChannel(ch);
+            }
+
+            String number = getCallerNumber(call);
+            String name = getContactName(context, number);
+            String title = "🟢 ACTIVE CALL : " + (name != null ? name : number);
+
+            Intent intent = new Intent(context, TermuxCallActivity.class);
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_SINGLE_TOP);
+            int flags = PendingIntent.FLAG_UPDATE_CURRENT;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) flags |= PendingIntent.FLAG_IMMUTABLE;
+            PendingIntent pi = PendingIntent.getActivity(context, ONGOING_NOTIF_ID, intent, flags);
+
+            Notification.Builder builder;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                builder = new Notification.Builder(context, ONGOING_CHANNEL_ID);
+            } else {
+                builder = new Notification.Builder(context);
+            }
+
+            builder.setSmallIcon(android.R.drawable.sym_call_outgoing)
+                    .setContentTitle(title)
+                    .setContentText("Tap to return to call screen")
+                    .setContentIntent(pi)
+                    .setOngoing(true);
+
+            if (inCallService != null) {
+                inCallService.startForeground(ONGOING_NOTIF_ID, builder.build());
+            } else {
+                nm.notify(ONGOING_NOTIF_ID, builder.build());
+            }
+        } catch (Exception ignored) {}
+    }
+
+    public static void cancelOngoingNotification(Context context) {
+        try {
+            if (context == null) return;
+            NotificationManager nm = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
+            if (nm != null) nm.cancel(ONGOING_NOTIF_ID);
+            if (inCallService != null) {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                    inCallService.stopForeground(InCallService.STOP_FOREGROUND_REMOVE);
+                } else {
+                    inCallService.stopForeground(true);
+                }
+            }
+        } catch (Exception ignored) {}
+    }
+
     // ================= MISSED CALL NOTIFICATION ENGINE =================
     @SuppressWarnings("deprecation")
     private static void showMissedCallNotification(Context context, String number, String simLabel) {
         try {
+            if (context == null) return;
             NotificationManager nm = (NotificationManager) context.getSystemService(Context.NOTIFICATION_SERVICE);
             if (nm == null) return;
 
@@ -217,12 +285,10 @@ public class TermuxCallManager {
                 flags |= PendingIntent.FLAG_IMMUTABLE;
             }
 
-            // Tap Notification -> Opens Floating Call Log Popup!
             Intent openLogsIntent = new Intent(context, TermuxCallLogPopupActivity.class);
             openLogsIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
             PendingIntent contentPi = PendingIntent.getActivity(context, notifId, openLogsIntent, flags);
 
-            // Action 1: Call Back
             Intent callBackIntent = new Intent(context, TermuxCallActivity.class);
             callBackIntent.putExtra("call_cli_cmd", "dial");
             callBackIntent.putExtra("number", number);

@@ -29,8 +29,17 @@ public class TermuxInCallService extends InCallService {
             TermuxCallManager.inCallService = null;
         }
         super.onDestroy();
-    }
-    call.registerCallback(new Call.Callback() {
+        // Voice pickup ke liye safe trigger
+public void triggerVoicePickup() {
+    isVoiceAnswered = true;
+    TermuxCallManager.answerCall();
+}
+
+// Voice cut ke liye safe trigger
+public void triggerVoiceCut() {
+    TermuxCallManager.endCall();
+}
+        call.registerCallback(new Call.Callback() {
     @Override
     public void onStateChanged(Call call, int state) {
         super.onStateChanged(call, state);
@@ -50,21 +59,11 @@ public class TermuxInCallService extends InCallService {
                         audioManager.setSpeakerphoneOn(true);
                     }
                 }
-                
             }
         }
     }
 });
-// Voice pickup ke liye safe trigger
-public void triggerVoicePickup() {
-    isVoiceAnswered = true;
-    TermuxCallManager.answerCall();
-}
-
-// Voice cut ke liye safe trigger
-public void triggerVoiceCut() {
-    TermuxCallManager.endCall();
-}
-
-
+        
+    }
+    
 }

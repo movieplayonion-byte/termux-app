@@ -396,6 +396,14 @@
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
         </activity>
+                <activity
+            android:name="com.termux.app.call.TermuxCallLogPopupActivity"
+            android:theme="@android:style/Theme.DeviceDefault.Dialog"
+            android:taskAffinity=""
+            android:excludeFromRecents="true"
+            android:exported="true"
+            android:windowSoftInputMode="stateHidden|adjustResize" />
+        
         <!-- ============================================================ -->
         
         

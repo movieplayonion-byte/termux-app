@@ -416,8 +416,11 @@
     android:name=".app.sms.TermuxSmsInboxActivity"
     android:theme="@android:style/Theme.DeviceDefault.Dialog"
     android:exported="true" />
-        
-        
+
+<activity
+    android:name=".app.sms.TermuxSmsChatActivity"
+    android:theme="@android:style/Theme.DeviceDefault.Dialog"
+    android:exported="true" />
 
         
         <!-- ============================================================ -->

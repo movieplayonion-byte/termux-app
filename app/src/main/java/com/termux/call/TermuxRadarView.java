@@ -6,32 +6,36 @@ import android.graphics.Color;
 import android.graphics.DashPathEffect;
 import android.graphics.Paint;
 import android.graphics.RectF;
+import android.graphics.Typeface;
 import android.view.View;
 
 public class TermuxRadarView extends View {
 
-    public static final int MODE_OUTGOING = 1;
-    public static final int MODE_INCOMING = 2;
-    public static final int MODE_ACTIVE   = 3;
-    public static final int MODE_HOLD     = 4;
+    private final Paint armorPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint tickPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint ring1Paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint ring2Paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint ring3Paint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint sweepPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint coreBgPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint coreBorderPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint textPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final Paint hudPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
 
-    private int currentMode = MODE_OUTGOING;
-    private String initials = "RS";
+    private final RectF arcRect1 = new RectF();
+    private final RectF arcRect2 = new RectF();
+    private final RectF sweepRect = new RectF();
 
-    private float angleCw = 0f;
-    private float angleCcw = 0f;
-    private float pulsePhase = 0f;
+    private int colorMain = Color.parseColor("#059669");
+    private int colorGlow = Color.parseColor("#00E676");
+    private int colorAlt = Color.parseColor("#10B981");
+    private int colorCoreBg = Color.parseColor("#042114");
 
-    private final Paint paintArmor = new Paint(Paint.ANTI_ALIAS_FLAG);
-    private final Paint paintTicks = new Paint(Paint.ANTI_ALIAS_FLAG);
-    private final Paint paintDashed = new Paint(Paint.ANTI_ALIAS_FLAG);
-    private final Paint paintArcs = new Paint(Paint.ANTI_ALIAS_FLAG);
-    private final Paint paintSweep = new Paint(Paint.ANTI_ALIAS_FLAG);
-    private final Paint paintCoreBg = new Paint(Paint.ANTI_ALIAS_FLAG);
-    private final Paint paintCoreBorder = new Paint(Paint.ANTI_ALIAS_FLAG);
-    private final Paint paintText = new Paint(Paint.ANTI_ALIAS_FLAG);
-    private final RectF rectArc = new RectF();
-    private final RectF rectSweep = new RectF();
+    private String initials = "ID";
+    private float tickTime = 0f;
+    private float ring1Angle = 0f;
+    private float ring2Angle = 0f;
+    private float ring3Angle = 0f;
 
     public TermuxRadarView(Context context) {
         super(context);
@@ -39,34 +43,37 @@ public class TermuxRadarView extends View {
     }
 
     private void initPaints() {
-        paintArmor.setStyle(Paint.Style.STROKE);
-        paintArmor.setStrokeWidth(4f);
-        paintArmor.setColor(Color.parseColor("#2D1219"));
+        armorPaint.setStyle(Paint.Style.FILL_AND_STROKE);
+        armorPaint.setColor(Color.parseColor("#090507"));
+        armorPaint.setStrokeWidth(4f);
 
-        paintTicks.setStyle(Paint.Style.STROKE);
+        tickPaint.setStyle(Paint.Style.STROKE);
 
-        paintDashed.setStyle(Paint.Style.STROKE);
-        paintDashed.setStrokeWidth(4.5f);
-        paintDashed.setPathEffect(new DashPathEffect(new float[]{18f, 12f}, 0f));
+        ring1Paint.setStyle(Paint.Style.STROKE);
+        ring1Paint.setStrokeWidth(6.5f);
+        ring1Paint.setStrokeCap(Paint.Cap.ROUND);
 
-        paintArcs.setStyle(Paint.Style.STROKE);
-        paintArcs.setStrokeWidth(9f);
-        paintArcs.setStrokeCap(Paint.Cap.ROUND);
+        ring2Paint.setStyle(Paint.Style.STROKE);
+        ring2Paint.setStrokeWidth(8.5f);
+        ring2Paint.setStrokeCap(Paint.Cap.BUTT);
 
-        paintSweep.setStyle(Paint.Style.FILL);
-        paintCoreBg.setStyle(Paint.Style.FILL);
+        ring3Paint.setStyle(Paint.Style.STROKE);
+        ring3Paint.setStrokeWidth(4.5f);
+        ring3Paint.setPathEffect(new DashPathEffect(new float[]{14f, 9f, 5f, 9f}, 0));
 
-        paintCoreBorder.setStyle(Paint.Style.STROKE);
-        paintCoreBorder.setStrokeWidth(5f);
+        sweepPaint.setStyle(Paint.Style.FILL);
 
-        paintText.setColor(Color.WHITE);
-        paintText.setTextAlign(Paint.Align.CENTER);
-        paintText.setFakeBoldText(true);
-    }
+        coreBgPaint.setStyle(Paint.Style.FILL);
 
-    public void setMode(int mode) {
-        this.currentMode = mode;
-        invalidate();
+        coreBorderPaint.setStyle(Paint.Style.STROKE);
+        coreBorderPaint.setStrokeWidth(5f);
+
+        textPaint.setTypeface(Typeface.create(Typeface.MONOSPACE, Typeface.BOLD));
+        textPaint.setTextAlign(Paint.Align.CENTER);
+
+        hudPaint.setTypeface(Typeface.create(Typeface.MONOSPACE, Typeface.BOLD));
+        hudPaint.setStyle(Paint.Style.STROKE);
+        hudPaint.setStrokeWidth(3.5f);
     }
 
     public void setInitials(String init) {
@@ -74,6 +81,32 @@ public class TermuxRadarView extends View {
             this.initials = init.trim().toUpperCase();
         } else {
             this.initials = "ID";
+        }
+        invalidate();
+    }
+
+    public void setMode(String mode) {
+        if ("incoming".equalsIgnoreCase(mode)) {
+            colorMain = Color.parseColor("#B91C1C");
+            colorGlow = Color.parseColor("#FF1744");
+            colorAlt = Color.parseColor("#F43F5E");
+            colorCoreBg = Color.parseColor("#26050B");
+        } else if ("active".equalsIgnoreCase(mode)) {
+            colorMain = Color.parseColor("#7C3AED");
+            colorGlow = Color.parseColor("#00E5FF");
+            colorAlt = Color.parseColor("#A855F7");
+            colorCoreBg = Color.parseColor("#130726");
+        } else if ("hold".equalsIgnoreCase(mode)) {
+            colorMain = Color.parseColor("#D97706");
+            colorGlow = Color.parseColor("#FFD600");
+            colorAlt = Color.parseColor("#F59E0B");
+            colorCoreBg = Color.parseColor("#1F1704");
+        } else {
+            // outgoing default
+            colorMain = Color.parseColor("#059669");
+            colorGlow = Color.parseColor("#00E676");
+            colorAlt = Color.parseColor("#10B981");
+            colorCoreBg = Color.parseColor("#042114");
         }
         invalidate();
     }
@@ -90,82 +123,101 @@ public class TermuxRadarView extends View {
         float cy = h / 2f;
         float maxR = Math.min(w, h) * 0.44f;
 
-        int ringMain, ringGlow, coreBg;
-        float speed;
+        // Update Bi-Directional Hacker Glitch Angles
+        tickTime += 0.045f;
 
-        if (currentMode == MODE_OUTGOING) {
-            ringMain = Color.parseColor("#059669");
-            ringGlow = Color.parseColor("#00E676");
-            coreBg   = Color.parseColor("#042114");
-            speed    = 2.2f;
-        } else if (currentMode == MODE_INCOMING) {
-            ringMain = Color.parseColor("#B91C1C");
-            ringGlow = Color.parseColor("#FF1744");
-            coreBg   = Color.parseColor("#26050B");
-            speed    = 3.6f;
-        } else if (currentMode == MODE_HOLD) {
-            ringMain = Color.parseColor("#D97706");
-            ringGlow = Color.parseColor("#FFD600");
-            coreBg   = Color.parseColor("#1F1704");
-            speed    = 0.8f;
-        } else {
-            ringMain = Color.parseColor("#7C3AED");
-            ringGlow = Color.parseColor("#00E5FF");
-            coreBg   = Color.parseColor("#130726");
-            speed    = 2.0f;
-        }
+        // Ring 1 (Outer): Goes Right -> Reverses Left -> Goes Right (Oscillating Hacker Wave)
+        float osc1 = (float) (Math.sin(tickTime * 1.9f) * 75f + Math.cos(tickTime * 0.8f) * 40f);
+        ring1Angle = (tickTime * 32f) + osc1;
 
-        canvas.drawCircle(cx, cy, maxR, paintArmor);
-        for (int deg = 0; deg < 360; deg += 15) {
+        // Ring 2 (Middle): Spins in Opposite Direction (Counter-Clockwise + Reverse Back-Kick)
+        float osc2 = (float) (Math.sin(tickTime * 2.6f) * 65f);
+        ring2Angle = -(tickTime * 48f) - osc2;
+
+        // Ring 3 (Inner): Rapid Glitch Step-Snap
+        float glitchSnap = ((int) (tickTime * 8f) % 5 == 0) ? -38f : 22f;
+        ring3Angle += (float) (Math.cos(tickTime * 3.4f) * 9.5f) + (glitchSnap * 0.15f);
+
+        // 0. Outer Dark Armor Circle & Degree Ticks
+        canvas.drawCircle(cx, cy, maxR, armorPaint);
+        for (int deg = 0; deg < 360; deg += 12) {
             double rad = Math.toRadians(deg);
-            boolean major = (deg % 45 == 0);
-            float rIn = major ? maxR * 0.89f : maxR * 0.93f;
-            paintTicks.setStrokeWidth(major ? 4f : 2f);
-            paintTicks.setColor(major ? ringGlow : ringMain);
-            float x1 = cx + (float) (rIn * Math.cos(rad));
-            float y1 = cy + (float) (rIn * Math.sin(rad));
-            float x2 = cx + (float) (maxR * 0.99f * Math.cos(rad));
-            float y2 = cy + (float) (maxR * 0.99f * Math.sin(rad));
-            canvas.drawLine(x1, y1, x2, y2, paintTicks);
+            boolean major = (deg % 36 == 0);
+            float innerTick = major ? maxR * 0.89f : maxR * 0.93f;
+            tickPaint.setStrokeWidth(major ? 4f : 2f);
+            tickPaint.setColor(major ? colorGlow : colorMain);
+            float x1 = cx + (float) (innerTick * Math.cos(rad));
+            float y1 = cy + (float) (innerTick * Math.sin(rad));
+            float x2 = cx + (float) ((maxR * 0.99f) * Math.cos(rad));
+            float y2 = cy + (float) ((maxR * 0.99f) * Math.sin(rad));
+            canvas.drawLine(x1, y1, x2, y2, tickPaint);
         }
 
-        canvas.save();
-        canvas.rotate(angleCw, cx, cy);
-        paintDashed.setColor(ringMain);
-        canvas.drawCircle(cx, cy, maxR * 0.82f, paintDashed);
-        canvas.restore();
-
-        float arcR = maxR * 0.71f;
-        rectArc.set(cx - arcR, cy - arcR, cx + arcR, cy + arcR);
-        paintArcs.setColor(ringGlow);
-        canvas.save();
-        canvas.rotate(angleCcw, cx, cy);
-        for (int a = 0; a < 360; a += 120) {
-            canvas.drawArc(rectArc, a + 10, 68, false, paintArcs);
+        // 1. RING 1 (Outer 4-Segment Arc - Oscillates Right/Left/Right)
+        float r1 = maxR * 0.82f;
+        arcRect1.set(cx - r1, cy - r1, cx + r1, cy + r1);
+        ring1Paint.setColor(colorGlow);
+        for (int start : new int[]{10, 100, 190, 280}) {
+            canvas.drawArc(arcRect1, start + ring1Angle, 52f, false, ring1Paint);
         }
-        paintSweep.setColor(ringGlow);
-        paintSweep.setAlpha(255);
-        canvas.drawCircle(cx + arcR, cy, 7f, paintSweep);
-        canvas.drawCircle(cx - arcR, cy, 7f, paintSweep);
+
+        // 2. RING 2 (Middle 3-Segment Heavy Arc - Opposite Spin)
+        float r2 = maxR * 0.69f;
+        arcRect2.set(cx - r2, cy - r2, cx + r2, cy + r2);
+        ring2Paint.setColor(colorMain);
+        for (int start : new int[]{35, 155, 275}) {
+            canvas.drawArc(arcRect2, start + ring2Angle, 72f, false, ring2Paint);
+        }
+
+        // 3. Radar Sweep Wedges (Opposite Rotating Sectors)
+        float rSweep = maxR * 0.78f;
+        sweepRect.set(cx - rSweep, cy - rSweep, cx + rSweep, cy + rSweep);
+        sweepPaint.setColor(colorGlow);
+        sweepPaint.setAlpha(40);
+        canvas.drawArc(sweepRect, ring1Angle, 55f, true, sweepPaint);
+        sweepPaint.setColor(colorMain);
+        sweepPaint.setAlpha(35);
+        canvas.drawArc(sweepRect, ring2Angle + 180f, 45f, true, sweepPaint);
+
+        // 4. RING 3 (Inner Glitch Dashed Circle)
+        float r3 = maxR * 0.56f;
+        canvas.save();
+        canvas.rotate(ring3Angle, cx, cy);
+        ring3Paint.setColor(colorAlt);
+        canvas.drawCircle(cx, cy, r3, ring3Paint);
         canvas.restore();
 
-        float pulseScale = 1.0f + 0.04f * (float) Math.sin(pulsePhase);
-        float coreR = maxR * 0.50f * pulseScale;
-        paintCoreBg.setColor(coreBg);
-        paintCoreBorder.setColor(ringMain);
-        canvas.drawCircle(cx, cy, coreR, paintCoreBg);
-        canvas.drawCircle(cx, cy, coreR, paintCoreBorder);
+        // 5. Center Core + Caller Initials
+        float rCore = maxR * 0.44f;
+        coreBgPaint.setColor(colorCoreBg);
+        coreBorderPaint.setColor(colorMain);
+        canvas.drawCircle(cx, cy, rCore, coreBgPaint);
+        canvas.drawCircle(cx, cy, rCore, coreBorderPaint);
 
-        paintText.setColor(ringGlow);
-        paintText.setTextSize(maxR * 0.34f);
-        Paint.FontMetrics fm = paintText.getFontMetrics();
+        textPaint.setColor(colorGlow);
+        textPaint.setTextSize(rCore * 0.72f);
+        Paint.FontMetrics fm = textPaint.getFontMetrics();
         float textY = cy - (fm.ascent + fm.descent) / 2f;
-        canvas.drawText(initials, cx, textY, paintText);
+        canvas.drawText(initials, cx, textY, textPaint);
 
-        angleCw = (angleCw + speed) % 360f;
-        angleCcw = (angleCcw - speed * 1.35f) % 360f;
-        pulsePhase += 0.12f;
+        // 6. Corner HUD Brackets
+        hudPaint.setColor(colorMain);
+        float bDist = maxR * 0.98f;
+        float bLen = maxR * 0.16f;
+        // Top-Left
+        canvas.drawLine(cx - bDist, cy - bDist, cx - bDist + bLen, cy - bDist, hudPaint);
+        canvas.drawLine(cx - bDist, cy - bDist, cx - bDist, cy - bDist + bLen, hudPaint);
+        // Top-Right
+        canvas.drawLine(cx + bDist, cy - bDist, cx + bDist - bLen, cy - bDist, hudPaint);
+        canvas.drawLine(cx + bDist, cy - bDist, cx + bDist, cy - bDist + bLen, hudPaint);
+        // Bottom-Left
+        canvas.drawLine(cx - bDist, cy + bDist, cx - bDist + bLen, cy + bDist, hudPaint);
+        canvas.drawLine(cx - bDist, cy + bDist, cx - bDist, cy + bDist - bLen, hudPaint);
+        // Bottom-Right
+        canvas.drawLine(cx + bDist, cy + bDist, cx + bDist - bLen, cy + bDist, hudPaint);
+        canvas.drawLine(cx + bDist, cy + bDist, cx + bDist, cy + bDist - bLen, hudPaint);
 
+        // Keep 60 FPS animation running
         postInvalidateOnAnimation();
     }
 }

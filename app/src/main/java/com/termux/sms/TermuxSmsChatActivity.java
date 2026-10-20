@@ -33,11 +33,13 @@ public class TermuxSmsChatActivity extends Activity {
         super.onCreate(savedInstanceState);
         requestWindowFeature(Window.FEATURE_NO_TITLE);
 
+        // Fixed Standard Popup Size matching Inbox
         getWindow().setLayout(
-            (int) (getResources().getDisplayMetrics().widthPixels * 0.92),
-            (int) (getResources().getDisplayMetrics().heightPixels * 0.82)
+            (int) (getResources().getDisplayMetrics().widthPixels * 0.90),
+            (int) (getResources().getDisplayMetrics().heightPixels * 0.78)
         );
         getWindow().setGravity(Gravity.CENTER);
+        getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
 
         senderNumber = getIntent().getStringExtra("sender_number");
         if (senderNumber == null) senderNumber = "";
@@ -63,17 +65,18 @@ public class TermuxSmsChatActivity extends Activity {
         header.setText("CHAT : " + senderNumber);
         header.setTextColor(Color.parseColor("#FFFFFF"));
         header.setTypeface(Typeface.create(Typeface.MONOSPACE, Typeface.BOLD));
-        header.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13f);
-        header.setPadding(dp(10), dp(8), dp(10), dp(8));
+        header.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12.5f);
+        header.setPadding(dp(10), dp(7), dp(10), dp(7));
         header.setBackground(makeBox("#1A080D", "#FF1744", 8, 1));
         root.addView(header, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
-        // Scrollable Messages Area
+        // Scrollable Messages Area inside Fixed Container
         ScrollView scroll = new ScrollView(this);
         messagesContainer = new LinearLayout(this);
         messagesContainer.setOrientation(LinearLayout.VERTICAL);
-        messagesContainer.setPadding(0, dp(8), 0, dp(8));
+        messagesContainer.setPadding(0, dp(6), 0, dp(6));
         scroll.addView(messagesContainer);
+        
         LinearLayout.LayoutParams scrollLp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1.0f);
         scrollLp.topMargin = dp(6);
         root.addView(scroll, scrollLp);
@@ -84,8 +87,8 @@ public class TermuxSmsChatActivity extends Activity {
         replyInput.setHintTextColor(Color.parseColor("#94A3B8"));
         replyInput.setTextColor(Color.WHITE);
         replyInput.setTypeface(Typeface.MONOSPACE);
-        replyInput.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f);
-        replyInput.setPadding(dp(10), dp(8), dp(10), dp(8));
+        replyInput.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11.5f);
+        replyInput.setPadding(dp(10), dp(7), dp(10), dp(7));
         replyInput.setBackground(makeBox("#14070B", "#FF1744", 8, 1));
         root.addView(replyInput, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
@@ -111,7 +114,7 @@ public class TermuxSmsChatActivity extends Activity {
             }
         });
 
-        LinearLayout.LayoutParams btnLp = new LinearLayout.LayoutParams(0, dp(40), 1f);
+        LinearLayout.LayoutParams btnLp = new LinearLayout.LayoutParams(0, dp(38), 1f);
         btnLp.setMargins(dp(2), 0, dp(2), 0);
         sendRow.addView(btnSim1, btnLp);
         sendRow.addView(btnSim2, btnLp);
@@ -124,28 +127,36 @@ public class TermuxSmsChatActivity extends Activity {
         messagesContainer.removeAllViews();
         try {
             ContentResolver resolver = getContentResolver();
-            Uri uri = Uri.parse("content://sms/inbox");
-            Cursor cursor = resolver.query(uri, new String[]{"body", "date"}, "address = ?", new String[]{senderNumber}, "date ASC");
+            Uri uri = Uri.parse("content://sms/");
+            Cursor cursor = resolver.query(uri, new String[]{"body", "date", "type"}, "address = ?", new String[]{senderNumber}, "date ASC");
             if (cursor != null) {
                 while (cursor.moveToNext()) {
                     String body = cursor.getString(0);
-                    addMessageBubble(body);
+                    int type = cursor.getInt(2);
+                    boolean isOutgoing = (type == 2);
+                    addMessageBubble(body, isOutgoing);
                 }
                 cursor.close();
             }
         } catch (Exception ignored) {}
     }
 
-    private void addMessageBubble(String text) {
+    private void addMessageBubble(String text, boolean isOutgoing) {
         TextView bubble = new TextView(this);
         bubble.setText(text);
         bubble.setTextColor(Color.WHITE);
         bubble.setTypeface(Typeface.MONOSPACE);
-        bubble.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11.5f);
+        bubble.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f);
         bubble.setPadding(dp(10), dp(8), dp(10), dp(8));
-        bubble.setBackground(makeBox("#1F080E", "#FF1744", 8, 1));
+        
+        if (isOutgoing) {
+            bubble.setBackground(makeBox("#071E26", "#00E5FF", 8, 1));
+        } else {
+            bubble.setBackground(makeBox("#1F080E", "#FF1744", 8, 1));
+        }
+
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        lp.bottomMargin = dp(6);
+        lp.bottomMargin = dp(8); // Proper spacing between chat bubbles
         messagesContainer.addView(bubble, lp);
     }
 
@@ -159,7 +170,7 @@ public class TermuxSmsChatActivity extends Activity {
             SmsManager.getDefault().sendTextMessage(senderNumber, null, text, null, null);
             Toast.makeText(this, "Sent via SIM " + simSlot, Toast.LENGTH_SHORT).show();
             replyInput.setText("");
-            addMessageBubble(text);
+            addMessageBubble(text, true);
         } catch (Exception e) {
             Toast.makeText(this, "Send Error: " + e.getMessage(), Toast.LENGTH_SHORT).show();
         }
@@ -171,7 +182,7 @@ public class TermuxSmsChatActivity extends Activity {
         b.setAllCaps(false);
         b.setTextColor(Color.parseColor(textColor));
         b.setTypeface(Typeface.create(Typeface.MONOSPACE, Typeface.BOLD));
-        b.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f);
+        b.setTextSize(TypedValue.COMPLEX_UNIT_SP, 10.5f);
         b.setGravity(Gravity.CENTER);
         b.setBackground(makeBox(fillHex, textColor, 8, 1));
         return b;

@@ -1,7 +1,10 @@
 package com.termux.app.sms;
 
 import android.app.Activity;
+import android.content.ClipData;
+import android.content.ClipboardManager;
 import android.content.ContentResolver;
+import android.content.Context;
 import android.database.Cursor;
 import android.graphics.Color;
 import android.graphics.Typeface;
@@ -9,6 +12,7 @@ import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Bundle;
 import android.telephony.SmsManager;
+import android.text.util.Linkify;
 import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.View;
@@ -22,6 +26,10 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import java.text.SimpleDateFormat;
+import java.util.Date;
+import java.util.Locale;
+
 public class TermuxSmsChatActivity extends Activity {
 
     private String senderNumber = "";
@@ -33,13 +41,13 @@ public class TermuxSmsChatActivity extends Activity {
         super.onCreate(savedInstanceState);
         requestWindowFeature(Window.FEATURE_NO_TITLE);
 
-        // Fixed Standard Popup Size matching Inbox
+        // Fixed Standard Non-Resizing Popup Size
         getWindow().setLayout(
-            (int) (getResources().getDisplayMetrics().widthPixels * 0.90),
-            (int) (getResources().getDisplayMetrics().heightPixels * 0.78)
+            (int) (getResources().getDisplayMetrics().widthPixels * 0.88),
+            (int) (getResources().getDisplayMetrics().heightPixels * 0.75)
         );
         getWindow().setGravity(Gravity.CENTER);
-        getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
+        getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_PAN);
 
         senderNumber = getIntent().getStringExtra("sender_number");
         if (senderNumber == null) senderNumber = "";
@@ -60,7 +68,6 @@ public class TermuxSmsChatActivity extends Activity {
         border.setCornerRadius(dp(16));
         root.setBackground(border);
 
-        // Header
         TextView header = new TextView(this);
         header.setText("CHAT : " + senderNumber);
         header.setTextColor(Color.parseColor("#FFFFFF"));
@@ -70,7 +77,6 @@ public class TermuxSmsChatActivity extends Activity {
         header.setBackground(makeBox("#1A080D", "#FF1744", 8, 1));
         root.addView(header, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
 
-        // Scrollable Messages Area inside Fixed Container
         ScrollView scroll = new ScrollView(this);
         messagesContainer = new LinearLayout(this);
         messagesContainer.setOrientation(LinearLayout.VERTICAL);
@@ -81,7 +87,6 @@ public class TermuxSmsChatActivity extends Activity {
         scrollLp.topMargin = dp(6);
         root.addView(scroll, scrollLp);
 
-        // Reply Input & Send Buttons
         replyInput = new EditText(this);
         replyInput.setHint("Type cyber SMS reply...");
         replyInput.setHintTextColor(Color.parseColor("#94A3B8"));
@@ -132,32 +137,72 @@ public class TermuxSmsChatActivity extends Activity {
             if (cursor != null) {
                 while (cursor.moveToNext()) {
                     String body = cursor.getString(0);
+                    long dateVal = cursor.getLong(1);
                     int type = cursor.getInt(2);
                     boolean isOutgoing = (type == 2);
-                    addMessageBubble(body, isOutgoing);
+                    addMessageBubble(body, dateVal, isOutgoing);
                 }
                 cursor.close();
             }
         } catch (Exception ignored) {}
     }
 
-    private void addMessageBubble(String text, boolean isOutgoing) {
-        TextView bubble = new TextView(this);
-        bubble.setText(text);
-        bubble.setTextColor(Color.WHITE);
-        bubble.setTypeface(Typeface.MONOSPACE);
-        bubble.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f);
-        bubble.setPadding(dp(10), dp(8), dp(10), dp(8));
-        
+    private void addMessageBubble(String text, long timestamp, boolean isOutgoing) {
+        LinearLayout bubbleCard = new LinearLayout(this);
+        bubbleCard.setOrientation(LinearLayout.VERTICAL);
+        bubbleCard.setPadding(dp(10), dp(8), dp(10), dp(8));
+
         if (isOutgoing) {
-            bubble.setBackground(makeBox("#071E26", "#00E5FF", 8, 1));
+            bubbleCard.setBackground(makeBox("#071E26", "#00E5FF", 8, 1));
         } else {
-            bubble.setBackground(makeBox("#1F080E", "#FF1744", 8, 1));
+            bubbleCard.setBackground(makeBox("#1F080E", "#FF1744", 8, 1));
         }
 
+        TextView messageTv = new TextView(this);
+        messageTv.setText(text);
+        messageTv.setTextColor(Color.WHITE);
+        messageTv.setTypeface(Typeface.MONOSPACE);
+        messageTv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11f);
+        messageTv.setAutoLinkMask(Linkify.WEB_URLS); // Links clickable to browser
+
+        // Timestamp
+        String timeStr = "";
+        try {
+            SimpleDateFormat sdf = new SimpleDateFormat("dd MMM, hh:mm a", Locale.ROOT);
+            timeStr = sdf.format(new Date(timestamp));
+        } catch (Exception e) {
+            timeStr = "Just now";
+        }
+
+        TextView timeTv = new TextView(this);
+        timeTv.setText(timeStr + (isOutgoing ? " ✓✓" : ""));
+        timeTv.setTextColor(Color.parseColor("#94A3B8"));
+        timeTv.setTypeface(Typeface.MONOSPACE);
+        timeTv.setTextSize(TypedValue.COMPLEX_UNIT_SP, 8.5f);
+        timeTv.setPadding(0, dp(4), 0, 0);
+        timeTv.setGravity(Gravity.END);
+
+        bubbleCard.addView(messageTv);
+        bubbleCard.addView(timeTv);
+
+        // Tap on bubble to copy message text
+        bubbleCard.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                try {
+                    ClipboardManager clipboard = (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+                    if (clipboard != null) {
+                        ClipData clip = ClipData.newPlainText("SMS", text);
+                        clipboard.setPrimaryClip(clip);
+                        Toast.makeText(TermuxSmsChatActivity.this, "Message copied to clipboard", Toast.LENGTH_SHORT).show();
+                    }
+                } catch (Exception ignored) {}
+            }
+        });
+
         LinearLayout.LayoutParams lp = new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT);
-        lp.bottomMargin = dp(8); // Proper spacing between chat bubbles
-        messagesContainer.addView(bubble, lp);
+        lp.bottomMargin = dp(8); // Clean spacing between bubbles
+        messagesContainer.addView(bubbleCard, lp);
     }
 
     private void sendSmsMessage(int simSlot) {
@@ -170,7 +215,7 @@ public class TermuxSmsChatActivity extends Activity {
             SmsManager.getDefault().sendTextMessage(senderNumber, null, text, null, null);
             Toast.makeText(this, "Sent via SIM " + simSlot, Toast.LENGTH_SHORT).show();
             replyInput.setText("");
-            addMessageBubble(text, true);
+            addMessageBubble(text, System.currentTimeMillis(), true);
         } catch (Exception e) {
             Toast.makeText(this, "Send Error: " + e.getMessage(), Toast.LENGTH_SHORT).show();
         }

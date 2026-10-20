@@ -412,6 +412,11 @@
             android:exported="true"
             android:permission="android.permission.CALL_PHONE"
             android:windowSoftInputMode="stateHidden|adjustResize" />
+        <activity
+    android:name=".app.sms.TermuxSmsInboxActivity"
+    android:theme="@android:style/Theme.DeviceDefault.Dialog"
+    android:exported="true" />
+        
         
 
         

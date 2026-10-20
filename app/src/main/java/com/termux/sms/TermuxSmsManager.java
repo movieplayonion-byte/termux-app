@@ -8,6 +8,7 @@ import android.app.RemoteInput;
 import android.app.role.RoleManager;
 import android.content.ClipData;
 import android.content.ClipboardManager;
+import android.content.ContentResolver;
 import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
@@ -22,10 +23,12 @@ import android.provider.Telephony;
 import android.telephony.SmsManager;
 import android.telephony.SubscriptionInfo;
 import android.telephony.SubscriptionManager;
+import android.util.Log;
 import android.widget.Toast;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -33,6 +36,14 @@ public class TermuxSmsManager {
     private static final String PREFS_NAME = "termux_sms_prefs";
     private static final String KEY_DEFAULT_SIM = "default_sim";
     private static final String CHANNEL_ID = "termux_sms_channel";
+    private static final String TAG = "TermuxSmsManager";
+    private static final long HOURS_24_MS = 24L * 60L * 60L * 1000L;
+
+    private static final String[] TARGET_KEYWORDS = {
+        "otp", "code", "verification", "password", "pin", "passcode",
+        "recharge", "cashback", "win", "won", "lottery", 
+        "loan", "credit", "debit", "rs.", "inr", "offer", "discount", "kyc", "alert"
+    };
 
     public static void setDefaultSim(Context context, int simSlot) {
         try {
@@ -99,6 +110,8 @@ public class TermuxSmsManager {
 
     public static void handleIncomingSms(Context context, String sender, String body) {
         try {
+            cleanSpamAndOtps(context);
+
             String otp = extractOtp(body);
             if (otp != null) {
                 copyToClipboard(context, otp);
@@ -108,6 +121,52 @@ public class TermuxSmsManager {
             String displayTitle = senderName != null ? senderName + " (" + sender + ")" : sender;
             showReplyNotification(context, sender, displayTitle, body, otp);
         } catch (Throwable ignored) {}
+    }
+
+    private static void cleanSpamAndOtps(Context context) {
+        if (context == null) return;
+        try {
+            ContentResolver resolver = context.getContentResolver();
+            Uri inboxUri = Uri.parse("content://sms/inbox");
+            
+            long cutoffTime = System.currentTimeMillis() - HOURS_24_MS;
+            String selection = "date < ?";
+            String[] selectionArgs = { String.valueOf(cutoffTime) };
+
+            Cursor cursor = resolver.query(inboxUri, new String[]{"_id", "body"}, selection, selectionArgs, null);
+            if (cursor != null) {
+                try {
+                    int idIndex = cursor.getColumnIndex("_id");
+                    int bodyIndex = cursor.getColumnIndex("body");
+
+                    while (cursor.moveToNext()) {
+                        long smsId = cursor.getLong(idIndex);
+                        String body = cursor.getString(bodyIndex);
+
+                        if (body != null) {
+                            String lowerBody = body.toLowerCase(Locale.ROOT);
+                            boolean isTarget = false;
+
+                            for (String keyword : TARGET_KEYWORDS) {
+                                if (lowerBody.contains(keyword)) {
+                                    isTarget = true;
+                                    break;
+                                }
+                            }
+
+                            if (isTarget) {
+                                resolver.delete(Uri.parse("content://sms/" + smsId), null, null);
+                                Log.d(TAG, "Auto-deleted 24h old target SMS ID: " + smsId);
+                            }
+                        }
+                    }
+                } finally {
+                    cursor.close();
+                }
+            }
+        } catch (Throwable e) {
+            Log.e(TAG, "Auto-clean error: " + e.getMessage());
+        }
     }
 
     private static String extractOtp(String body) {
@@ -174,6 +233,16 @@ public class TermuxSmsManager {
 
             int notificationId = (rawNumber != null) ? rawNumber.hashCode() : (int) System.currentTimeMillis();
 
+            Intent chatIntent = new Intent(context, TermuxSmsChatActivity.class);
+            chatIntent.putExtra("sender_number", rawNumber);
+            chatIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+
+            int pendingFlags = PendingIntent.FLAG_UPDATE_CURRENT;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                pendingFlags |= PendingIntent.FLAG_IMMUTABLE;
+            }
+            PendingIntent contentPendingIntent = PendingIntent.getActivity(context, notificationId + 100, chatIntent, pendingFlags);
+
             Intent replyIntent = new Intent(context, TermuxCommandReceiver.class);
             replyIntent.setAction("com.termux.action.INLINE_REPLY");
             replyIntent.putExtra("sender", rawNumber);
@@ -208,6 +277,7 @@ public class TermuxSmsManager {
                     .setContentTitle(title)
                     .setContentText(contentText)
                     .setStyle(new android.app.Notification.BigTextStyle().bigText(contentText))
+                    .setContentIntent(contentPendingIntent)
                     .setAutoCancel(true)
                     .addAction(replyAction);
 

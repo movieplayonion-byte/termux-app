@@ -520,4 +520,43 @@ public class TermuxCallManager {
             }
         });
     }
+        public static String getVerifiedCallerTitle(Context context, Call call, String number) {
+        String contactName = getContactName(context, number);
+        if (contactName != null && !contactName.trim().isEmpty()) {
+            return contactName.trim();
+        }
+        if (call != null && call.getDetails() != null) {
+            String cnapName = call.getDetails().getCallerDisplayName();
+            if (cnapName != null && !cnapName.trim().isEmpty() && !"Unknown".equalsIgnoreCase(cnapName.trim())) {
+                return cnapName.trim();
+            }
+        }
+        if (number != null && !number.trim().isEmpty() && !"Unknown".equalsIgnoreCase(number.trim())) {
+            return "VERIFIED ID : " + number.trim();
+        }
+        return "TELECOM VERIFIED SUBSCRIBER";
+    }
+
+    public static String getTelecomKycBadgeText(Context context, Call call, String number) {
+        String simCarrier = getSimBadgeLabel(context, call);
+        String verifiedName = null;
+        if (call != null && call.getDetails() != null) {
+            String cnap = call.getDetails().getCallerDisplayName();
+            if (cnap != null && !cnap.trim().isEmpty() && !"Unknown".equalsIgnoreCase(cnap.trim())) {
+                verifiedName = cnap.trim().toUpperCase(Locale.ROOT);
+            }
+        }
+        if (verifiedName == null) {
+            String contactName = getContactName(context, number);
+            if (contactName != null && !contactName.trim().isEmpty()) {
+                verifiedName = contactName.trim().toUpperCase(Locale.ROOT);
+            }
+        }
+        if (verifiedName == null) {
+            verifiedName = (number != null && !number.isEmpty() && !"Unknown".equalsIgnoreCase(number))
+                    ? "SUBSCRIBER " + number : "CNAP_VERIFIED";
+        }
+        return "✓ TELECOM CNAP / KYC ID : " + verifiedName + " [" + simCarrier + "]";
+    }
+    
 }

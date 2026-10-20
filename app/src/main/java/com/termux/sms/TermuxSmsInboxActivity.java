@@ -38,15 +38,17 @@ public class TermuxSmsInboxActivity extends Activity {
         super.onCreate(savedInstanceState);
         requestWindowFeature(Window.FEATURE_NO_TITLE);
 
-        // Fixed Standard Popup Size (Never resizes dynamically)
+        // Fixed Non-Resizing Standard Popup Window
         getWindow().setLayout(
-            (int) (getResources().getDisplayMetrics().widthPixels * 0.90),
-            (int) (getResources().getDisplayMetrics().heightPixels * 0.78)
+            (int) (getResources().getDisplayMetrics().widthPixels * 0.88),
+            (int) (getResources().getDisplayMetrics().heightPixels * 0.75)
         );
         getWindow().setGravity(Gravity.CENTER);
-        getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
+        getWindow().setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_PAN);
 
-        TermuxSmsAutoCleaner.cleanSpamAndOtps(this);
+        try {
+            TermuxSmsAutoCleaner.cleanSpamAndOtps(this);
+        } catch (Throwable ignored) {}
 
         buildInboxLayout();
         loadSmsThreads();
@@ -121,7 +123,6 @@ public class TermuxSmsInboxActivity extends Activity {
             }
         });
 
-        // Long Press Delete Option in Inbox List
         listView.setOnItemLongClickListener(new AdapterView.OnItemLongClickListener() {
             @Override
             public boolean onItemLongClick(AdapterView<?> parent, View view, final int position, long id) {
@@ -191,7 +192,6 @@ public class TermuxSmsInboxActivity extends Activity {
             tvNum.setTypeface(Typeface.create(Typeface.MONOSPACE, Typeface.BOLD));
             tvNum.setTextSize(TypedValue.COMPLEX_UNIT_SP, 12f);
 
-            // Clean 1-line WhatsApp Style snippet preview
             TextView tvSnip = new TextView(getContext());
             tvSnip.setText(item.snippet != null ? item.snippet : "");
             tvSnip.setTextColor(Color.parseColor("#E2E8F0"));

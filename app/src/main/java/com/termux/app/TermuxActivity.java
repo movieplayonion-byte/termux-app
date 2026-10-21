@@ -214,7 +214,14 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
         super.onCreate(savedInstanceState);
 
         setContentView(R.layout.activity_termux);
-
+// Start 24x7 "Hey Alexa" Wake-Word Service
+Intent alexaIntent = new Intent(this, TermuxAlexaService.class);
+if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+    startForegroundService(alexaIntent);
+} else {
+    startService(alexaIntent);
+    }
+        
         // Load termux shared preferences
         // This will also fail if TermuxConstants.TERMUX_PACKAGE_NAME does not equal applicationId
         mPreferences = TermuxAppSharedPreferences.build(this, true);

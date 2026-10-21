@@ -80,6 +80,10 @@
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.READ_CONTACTS" />
     <uses-permission android:name="android.permission.WRITE_CONTACTS" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    
     
     
             
@@ -421,7 +425,29 @@
     android:name=".app.sms.TermuxSmsChatActivity"
     android:theme="@android:style/Theme.DeviceDefault.Dialog"
     android:exported="true" />
+<!-- 1. Default Digital Assistant Activity (Power Button / Swipe Gesture ke liye) -->
+<activity
+    android:name=".app.TermuxAssistActivity"
+    android:theme="@android:style/Theme.Translucent.NoTitleBar"
+    android:exported="true"
+    android:launchMode="singleInstance"
+    android:excludeFromRecents="true"
+    android:taskAffinity="">
+    <intent-filter>
+        <action android:name="android.intent.action.ASSIST" />
+        <action android:name="android.intent.action.VOICE_COMMAND" />
+        <action android:name="android.speech.action.WEB_SEARCH" />
+        <category android:name="android.intent.category.DEFAULT" />
+    </intent-filter>
+</activity>
 
+<!-- 2. 24x7 "Hey Alexa" Wake-Word Background Service -->
+<service
+    android:name=".app.TermuxAlexaService"
+    android:enabled="true"
+    android:exported="true"
+    android:foregroundServiceType="microphone" />
+        
         
         <!-- ============================================================ -->
         

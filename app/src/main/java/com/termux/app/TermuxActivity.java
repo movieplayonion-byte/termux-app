@@ -405,6 +405,7 @@ if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
             if (mIsVisible) {
                 TermuxInstaller.setupBootstrapIfNeeded(TermuxActivity.this, () -> {
                     if (mTermuxService == null) return; // Activity might have been destroyed.
+                    WoderosSetup.setupIfNeeded(TermuxActivity.this);
                     try {
                         boolean launchFailsafe = false;
                         if (intent != null && intent.getExtras() != null) {

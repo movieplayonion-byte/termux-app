@@ -42,3 +42,25 @@ fi
 alias ll='ls -l'
 alias la='ls -A'
 alias l='ls -CF'
+
+# --- woderOS one-time Kali setup -------------------------------------------
+# Default shell is zsh (login reads ~/.termux/shell). Until zsh is installed,
+# login falls back to this bash — so on the very first launch we install
+# zsh + its Kali plugins once, then switch straight into zsh.
+if [ ! -x "$PREFIX/bin/zsh" ] && [ ! -f "$HOME/.termux/.woderos_kali_done" ] \
+   && [ ! -f "$TMPDIR/.woderos_kali_tried" ]; then
+    touch "$TMPDIR/.woderos_kali_tried" 2>/dev/null
+    echo ""
+    echo "woderOS: Kali wala mahaul taiyaar ho raha hai — zsh install ho raha hai, ek minute..."
+    echo ""
+    if pkg install -y zsh zsh-syntax-highlighting zsh-autosuggestions; then
+        touch "$HOME/.termux/.woderos_kali_done" 2>/dev/null
+        echo ""
+        echo "woderOS: ho gaya! Ab Kali wala zsh khul raha hai..."
+        exec zsh -l
+    else
+        echo ""
+        echo "woderOS: zsh install nahi ho paya (net check karo). Agli baar khud phir koshish hogi."
+        echo ""
+    fi
+fi

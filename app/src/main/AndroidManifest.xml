@@ -425,6 +425,39 @@
     android:name=".app.sms.TermuxSmsChatActivity"
     android:theme="@android:style/Theme.DeviceDefault.Dialog"
     android:exported="true" />
+
+<!-- woderOS suite: home (launcher), contacts, admin and theme screens -->
+<activity
+    android:name=".app.WoderosHomeActivity"
+    android:label="woderOS Home"
+    android:theme="@android:style/Theme.DeviceDefault.NoActionBar"
+    android:exported="true"
+    android:launchMode="singleTask"
+    android:excludeFromRecents="true">
+    <intent-filter>
+        <action android:name="android.intent.action.MAIN" />
+        <category android:name="android.intent.category.HOME" />
+        <category android:name="android.intent.category.DEFAULT" />
+    </intent-filter>
+</activity>
+
+<activity
+    android:name=".app.WoderosContactsActivity"
+    android:label="woderOS Contacts"
+    android:theme="@android:style/Theme.DeviceDefault.NoActionBar"
+    android:exported="true" />
+
+<activity
+    android:name=".app.WoderosAdminActivity"
+    android:label="woderOS Admin"
+    android:theme="@android:style/Theme.DeviceDefault.NoActionBar"
+    android:exported="true" />
+
+<activity
+    android:name=".app.WoderosThemeActivity"
+    android:label="woderOS Themes"
+    android:theme="@android:style/Theme.DeviceDefault.NoActionBar"
+    android:exported="true" />
 <!-- 1. Default Digital Assistant Activity (Power Button / Swipe Gesture ke liye) -->
 <activity
     android:name=".app.TermuxAssistActivity"
